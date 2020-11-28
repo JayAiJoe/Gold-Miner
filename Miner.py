@@ -26,7 +26,6 @@ beacon = 3
 gold = 4
 
 
-
 def updateDisplay(grid, gridSize,screen,board):
     # Set the screen background
     screen.fill((0,0,0))
@@ -155,6 +154,7 @@ class Miner():
             else:
                 return False
         board.move_ctr += 1
+        updateDisplay(grid, GRID_SIZE,screen,board)
         return True
 
     #scans block in front of miner
@@ -185,6 +185,35 @@ class Miner():
     def rotate(self,board):
         board.rotate_ctr += 1
         self.front = (self.front+1)%4
+        updateDisplay(grid, GRID_SIZE,screen,board)
+    #backtrack the miner n moves
+    def backtrack(self,board,n):
+        board.rotate_ctr += 2
+        self.front = (self.front+2)%4
+        for i in range(n):
+            self.move(board)
+            
+    def moveto(self,board,coordinate):
+        if self.x > coordinate[1]:
+            while self.front != 1:
+                self.rotate(board)
+            while self.x > coordinate[1]:
+                self.move(board)
+        elif self.x < coordinate[1]:
+            while self.front != 3:
+                self.rotate(board)
+            while self.x < coordinate[1]:
+                self.move(board)
+        elif self.y > coordinate[0]:
+            while self.front != 0:
+                self.rotate(board)
+            while self.y > coordinate[0]:
+                self.move(board)
+        elif self.y < coordinate[0]:
+            while self.front != 2:
+                self.rotate(board)
+            while self.y < coordinate[0]:
+                self.move(board)
 
 
 #-------------------MAIN PROGRAM----------------------
@@ -225,43 +254,137 @@ while not done:
             # random miner
             if 2*WINDOW_WIDTH/3 <= pos[0] <= 2*WINDOW_WIDTH/3 + 140 and WINDOW_HEIGHT/2-40 <= pos[1] <= WINDOW_HEIGHT/2-10:
                 #---------------WRITE LOGIC HERE------------------
-                # 1/3 rotate, 2/3 move, does not scan ahead so it may fall into a pit
+                # 1/3 rotate, 1/3 move, 1/3 scan (doesn't really do anything); it may fall into a pit
                 gameover = False
                 while not gameover:
-                    turn = random.randint(0,2)
+                    turn = random.randint(0,3)
                     if turn == 1:
                         miner.rotate(board)
-                    else:
+                    elif turn == 2:
                         next_tile = miner.scan(grid)
-                        grid[miner.y][miner.x] = 0
-                        miner.move(board)
-                        grid[miner.y][miner.x] = 1
-                        updateDisplay(grid, GRID_SIZE,screen,board)
-                        if next_tile == pit:
-                            gameover = True
-                            print("Lose")
-                        elif next_tile == gold:
-                            gameover = True
-                            print("Win")
+                    elif turn == 3:
+                        lastpos = [miner.y,miner.x]
+                        if miner.move(board):
+                            grid[lastpos[0]][lastpos[1]] = 0
+                            grid[miner.y][miner.x] = 1
+                            updateDisplay(grid, GRID_SIZE,screen,board)
+                            if grid[miner.y][miner.x] == pit:
+                                gameover = True
+                                print("Lose")
+                            elif grid[miner.y][miner.x] == gold:
+                                gameover = True
+                                print("Win")
+                        else:
+                            continue
                     pygame.time.delay(250)
                 #--------------------------------------------------
             
             # smart miner
             if 2*WINDOW_WIDTH/3 <= pos[0] <= 2*WINDOW_WIDTH/3 + 140 and WINDOW_HEIGHT/2 <= pos[1] <= WINDOW_HEIGHT/2+40:
                 #---------------WRITE LOGIC HERE------------------
-                #basic Roomba behavior: forward until you hit a wall, then rotate, repeat
+                #Scans all 4 sides then determines best square to move to, changes behavior once a beacon is activated
                 gameover = False
+                possiblegold =[]
+                loop=[]
+                for i in range(0,GRID_SIZE):
+                    for j in range(0, GRID_SIZE):
+                        possiblegold.append([i,j])
+                possiblegold.remove([0,0])
                 while not gameover:
-                    if miner.scan(grid) == 0: #if empty, move forward
-                        grid[miner.y][miner.x] = 0
-                        miner.move(board)
-                        grid[miner.y][miner.x] = 1
-                        updateDisplay(grid, GRID_SIZE,screen,board)
-                    elif miner.scan(grid) == -1 or miner.scan(grid) == pit: #if pit, rotate
+                    fullscan = True
+                    while fullscan:
+                        bestmove =[0,1,2,3]
+                        right_tile = miner.scan(grid)
+                        if right_tile == gold:
+                            break
+                        elif right_tile == pit or right_tile == -1:
+                            bestmove.remove(1)
+                        #if right_tile != -1:
+                            #possiblegold.remove([miner.y,miner.x+1])
                         miner.rotate(board)
-                    else: #if gold, stop
+                        down_tile = miner.scan(grid)
+                        print(miner.front,down_tile)
+                        if down_tile == gold:
+                            break
+                        elif down_tile == pit or down_tile == -1:
+                            bestmove.remove(2)
+                        #if down_tile != -1:
+                            #possiblegold.remove([miner.y+1,miner.x])
+                        miner.rotate(board)
+                        left_tile = miner.scan(grid)
+                        if left_tile == gold:
+                            break
+                        elif left_tile == pit or left_tile == -1:
+                            bestmove.remove(3)
+                        #if left_tile != -1:
+                            #possiblegold.remove([miner.y,miner.x-1])
+                        miner.rotate(board)
+                        up_tile = miner.scan(grid)
+                        if up_tile == gold:
+                            break
+                        elif up_tile == pit or up_tile == -1:
+                            bestmove.remove(0)
+                        #if up_tile != -1:
+                            #possiblegold.remove([miner.y-1,miner.x])
+                        miner.rotate(board)
+                        
+                        if right_tile == beacon:
+                            bestmove = 1
+                        elif down_tile == beacon:
+                            bestmove = 2
+                        elif left_tile == beacon:
+                            bestmove = 3
+                        elif up_tile == beacon:
+                            bestmove = 0
+                        fullscan = False
+                    print([miner.y,miner.x])
+                    #print(bestmove)
+                    try:
+                        while miner.front not in bestmove:
+                            miner.rotate(board)
+                    except TypeError:
+                        while miner.front != bestmove:
+                            miner.rotate(board)
+                    lastpos = [miner.y,miner.x]
+                    miner.move(board)
+                    grid[lastpos[0]][lastpos[1]] = 0
+                    grid[miner.y][miner.x] = 1
+                    updateDisplay(grid, GRID_SIZE,screen,board)
+                    while miner.front != 1:
+                        miner.rotate(board)
+                    if [miner.y,miner.x] == prev_gold:
                         gameover = True
-                        print("treasure")
+                        print("Win")
+                        break
+                    elif grid[miner.y][miner.x] == beacon:
+                        for i in range(len(board.beacons)):
+                            if board.beacons[i].pos[0] == miner.y and board.beacons[i].pos[1] == miner.x:
+                                m = board.beacons[i].to_gold
+                                break
+                        if m != 0: #if beacon returns a nonzero
+                            beacongold =[]
+                            if miner.y+m < GRID_SIZE:
+                                beacongold.append([miner.y+m,miner.x])
+                            if miner.y-m > 0:
+                                beacongold.append([miner.y-m,miner.x])
+                            if miner.x+m < GRID_SIZE:
+                                beacongold.append([miner.y,miner.x+m])
+                            if miner.x-m > 0:
+                                beacongold.append([miner.y,miner.x-m])
+                                
+                            for i in range(len(possiblegold)):
+                              if possiblegold not in beacongold:
+                                  possiblegold.remove(possiblegold[i])
+                            for i in possiblegold:
+
+                                miner.moveto(board,possiblegold[i])
+                                if grid[miner.y][miner.x] != gold:
+                                    possiblegold.remove([miner.y,miner.x])
+                                else:
+                                    gameover = True
+                                    print("Winner")
+                                    break
+                                miner.backtrack(m)
                     pygame.time.delay(250)
                 #--------------------------------------------------
 
@@ -282,7 +405,7 @@ while not done:
                     if placement_type == beacon:
                         b = Beacon([row,column])
                         b.find_gold(grid)
-                        beacons.append(b)
+                        board.beacons.append(b)
                     elif placement_type == gold:
                         if board.prev_gold:
                             grid[board.prev_gold[0]][board.prev_gold[1]] = 0
