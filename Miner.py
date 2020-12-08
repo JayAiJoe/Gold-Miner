@@ -25,8 +25,7 @@ pit = 2
 beacon = 3
 gold = 4
 
-
-
+next_tile = 0
 def updateDisplay(grid, gridSize,screen,board):
     # Set the screen background
     screen.fill((0,0,0))
@@ -120,10 +119,6 @@ class Beacon:
                     distance = self.pos[0] - y
                 y -= 1
         self.to_gold = distance
-                
-        
-        
-        
 
 class Miner():
     def __init__(self):
@@ -185,6 +180,56 @@ class Miner():
     def rotate(self,board):
         board.rotate_ctr += 1
         self.front = (self.front+1)%4
+        global next_tile
+        if self.front == 0:
+            if self.y > 0:
+                next_tile = [self.y-1,self.x]
+            else:
+                next_tile = -1
+        elif self.front == 1:
+            if self.x < GRID_SIZE-1:
+                next_tile = [self.y,self.x+1]
+            else:
+                next_tile = -1
+        elif self.front == 2:
+            if self.y < GRID_SIZE-1:
+                next_tile = [self.y+1,self.x]
+            else:
+                next_tile = -1
+        else:
+            if self.x > 0:
+                next_tile = [self.y,self.x-1]
+            else:
+                next_tile = -1            
+        updateDisplay(grid, GRID_SIZE,screen,board)
+    #backtrack the miner n moves
+    def backtrack(self,board,n):
+        board.rotate_ctr += 2
+        self.front = (self.front+2)%4
+        for i in range(n):
+            self.move(board)
+            
+    def moveto(self,board,coordinate):
+        if self.x > coordinate[1]:
+            while self.front != 1:
+                self.rotate(board)
+            while self.x > coordinate[1]:
+                self.move(board)
+        elif self.x < coordinate[1]:
+            while self.front != 3:
+                self.rotate(board)
+            while self.x < coordinate[1]:
+                self.move(board)
+        elif self.y > coordinate[0]:
+            while self.front != 0:
+                self.rotate(board)
+            while self.y > coordinate[0]:
+                self.move(board)
+        elif self.y < coordinate[0]:
+            while self.front != 2:
+                self.rotate(board)
+            while self.y < coordinate[0]:
+                self.move(board)
 
 
 #-------------------MAIN PROGRAM----------------------
@@ -249,19 +294,213 @@ while not done:
             # smart miner
             if 2*WINDOW_WIDTH/3 <= pos[0] <= 2*WINDOW_WIDTH/3 + 140 and WINDOW_HEIGHT/2 <= pos[1] <= WINDOW_HEIGHT/2+40:
                 #---------------WRITE LOGIC HERE------------------
-                #basic Roomba behavior: forward until you hit a wall, then rotate, repeat
+                #Scans all 4 sides then determines best square to move to, changes behavior once a beacon is activated
                 gameover = False
+                checked =[]
+                coordinates=[]
                 while not gameover:
-                    if miner.scan(grid) == 0: #if empty, move forward
-                        grid[miner.y][miner.x] = 0
+                    beaconF = 0
+                    fullscan = True
+                    while fullscan: #rotates to find best path
+                        bestmove =[0,1,2,3]
+                        right_tile = miner.scan(grid)
+                        if right_tile == gold:
+                            break
+                        elif right_tile == pit or right_tile == -1:
+                            bestmove.remove(1)
+                        miner.rotate(board)
+                        down_tile = miner.scan(grid)
+                        if down_tile == gold:
+                            break
+                        elif down_tile == pit or down_tile == -1:
+                            bestmove.remove(2)
+                        miner.rotate(board)
+                        left_tile = miner.scan(grid)
+                        if left_tile == gold:
+                            break
+                        elif left_tile == pit or left_tile == -1:
+                            bestmove.remove(3)
+                        miner.rotate(board)
+                        up_tile = miner.scan(grid)
+                        if up_tile == gold:
+                            break
+                        elif up_tile == pit or up_tile == -1:
+                            bestmove.remove(0)
+                        miner.rotate(board)
+                        
+                        if right_tile == beacon:
+                            bestmove = 1
+                            beaconF = 1
+                        elif down_tile == beacon:
+                            bestmove = 2
+                            beaconF = 1
+                        elif left_tile == beacon:
+                            bestmove = 3
+                            beaconF = 1
+                        elif up_tile == beacon:
+                            bestmove = 0
+                            beaconF = 1
+                        fullscan = False
+                    try:
+                        while miner.front not in bestmove:
+                            miner.rotate(board)
+                    except TypeError:
+                        while miner.front != bestmove:
+                            miner.rotate(board)
+                    lastpos = [miner.y,miner.x]
+                    if next_tile in checked:
                         miner.move(board)
+                        while miner.front != 1:
+                            miner.rotate(board)
+                        grid[lastpos[0]][lastpos[1]] = 2
                         grid[miner.y][miner.x] = 1
                         updateDisplay(grid, GRID_SIZE,screen,board)
-                    elif miner.scan(grid) == -1 or miner.scan(grid) == pit: #if pit, rotate
+                        continue
+                    if lastpos not in checked:
+                        checked.append(lastpos)
+                    miner.move(board)
+                    grid[lastpos[0]][lastpos[1]] = 0
+                    grid[miner.y][miner.x] = 1
+                    updateDisplay(grid, GRID_SIZE,screen,board)
+                    while miner.front != 1:
                         miner.rotate(board)
-                    else: #if gold, stop
+                    if beaconF == 1:
+                        for i in range(len(board.beacons)):
+                            if board.beacons[i].pos == [miner.y,miner.x]:
+                                board.beacons[i].find_gold(grid)
+                                beaconMove = board.beacons[i].to_gold
+                                break
+                        if beaconMove != 0:
+                            if miner.y+beaconMove < GRID_SIZE:
+                                if [miner.y+beaconMove,miner.x] not in checked:
+                                    coordinates.append([miner.y+beaconMove,miner.x])
+                            if miner.y-beaconMove >= 0:
+                                if [miner.y-beaconMove,miner.x] not in checked:
+                                    coordinates.append([miner.y-beaconMove,miner.x])
+                            if miner.x+beaconMove < GRID_SIZE:
+                                if [miner.y,miner.x+beaconMove] not in checked:
+                                    coordinates.append([miner.y,miner.x+beaconMove])
+                            if miner.x-beaconMove >= 0:
+                                if [miner.y,miner.x-beaconMove] not in checked:
+                                    coordinates.append([miner.y,miner.x-beaconMove])
+                            while [miner.y,miner.x] != prev_gold:
+                                print(coordinates)
+                                for j in coordinates:
+                                    print(j)
+                                    coordinate = j
+                                    gonext =0 
+                                    moves = 0
+                                    if miner.x < coordinate[1]: #to the right
+                                        while miner.front != 1:
+                                            miner.rotate(board)
+                                        while miner.x < coordinate[1]:
+                                            lastpos = [miner.y,miner.x]
+                                            if miner.scan(grid) == pit:
+                                                board.rotate_ctr += 2
+                                                miner.front = (miner.front+2)%4
+                                                for k in range(moves):
+                                                    print(moves)
+                                                    miner.move(board)
+                                                    grid[lastpos[0]][lastpos[1]] = 0
+                                                    grid[miner.y][miner.x] = 1
+                                                    updateDisplay(grid, GRID_SIZE,screen,board)
+                                                gonext = 1
+                                                break
+                                            miner.move(board)
+                                            moves +=1
+                                            grid[lastpos[0]][lastpos[1]] = 0
+                                            grid[board.beacons[i].pos[0]][board.beacons[i].pos[1]] = 3
+                                            grid[miner.y][miner.x] = 1
+                                            updateDisplay(grid, GRID_SIZE,screen,board)
+                                        if gonext == 1:
+                                            continue
+                                    elif miner.x > coordinate[1]: #to the left
+                                        while miner.front != 3:
+                                            miner.rotate(board)
+                                        while miner.x > coordinate[1]:
+                                            lastpos = [miner.y,miner.x]
+                                            if miner.scan(grid) == pit:
+                                                board.rotate_ctr += 2
+                                                miner.front = (miner.front+2)%4
+                                                for k in range(moves):
+                                                    print(moves)
+                                                    miner.move(board)
+                                                    grid[lastpos[0]][lastpos[1]] = 0
+                                                    grid[miner.y][miner.x] = 1
+                                                    updateDisplay(grid, GRID_SIZE,screen,board)
+                                                gonext = 1
+                                                break
+                                            miner.move(board)
+                                            moves+=1
+                                            grid[lastpos[0]][lastpos[1]] = 0
+                                            grid[board.beacons[i].pos[0]][board.beacons[i].pos[1]] = 3
+                                            grid[miner.y][miner.x] = 1
+                                            updateDisplay(grid, GRID_SIZE,screen,board)
+                                        if gonext == 1:
+                                            continue
+                                    elif miner.y > coordinate[0]:#upwards
+                                        while miner.front != 0:
+                                            miner.rotate(board)
+                                        while miner.y > coordinate[0]:
+                                            lastpos = [miner.y,miner.x]
+                                            if miner.scan(grid) == pit:
+                                                board.rotate_ctr += 2
+                                                miner.front = (miner.front+2)%4
+                                                for k in range(moves):
+                                                    print(moves)
+                                                    miner.move(board)
+                                                    grid[lastpos[0]][lastpos[1]] = 0
+                                                    grid[miner.y][miner.x] = 1
+                                                    updateDisplay(grid, GRID_SIZE,screen,board)
+                                                gonext = 1
+                                                break
+                                            miner.move(board)
+                                            moves+=1
+                                            grid[lastpos[0]][lastpos[1]] = 0
+                                            grid[board.beacons[i].pos[0]][board.beacons[i].pos[1]] = 3
+                                            grid[miner.y][miner.x] = 1
+                                            updateDisplay(grid, GRID_SIZE,screen,board)
+                                        if gonext == 1:
+                                            continue
+                                    elif miner.y < coordinate[0]:#downwards
+                                        while miner.front != 2:
+                                            miner.rotate(board)
+                                        while miner.y < coordinate[0]:
+                                            lastpos = [miner.y,miner.x]
+                                            if miner.scan(grid) == pit:
+                                                board.rotate_ctr += 2
+                                                miner.front = (miner.front+2)%4
+                                                for k in range(moves):
+                                                    print(moves)
+                                                    miner.move(board)
+                                                    grid[lastpos[0]][lastpos[1]] = 0
+                                                    grid[miner.y][miner.x] = 1
+                                                    updateDisplay(grid, GRID_SIZE,screen,board)
+                                                gonext = 1
+                                                break
+                                            miner.move(board)
+                                            moves+=1
+                                            grid[lastpos[0]][lastpos[1]] = 0
+                                            grid[board.beacons[i].pos[0]][board.beacons[i].pos[1]] = 3
+                                            grid[miner.y][miner.x] = 1
+                                            updateDisplay(grid, GRID_SIZE,screen,board)
+                                        if gonext == 1:
+                                            continue
+                                    if [miner.y,miner.x] != prev_gold:
+                                        board.rotate_ctr += 2
+                                        miner.front = (miner.front+2)%4
+                                        for k in range(beaconMove):
+                                            lastpos = [miner.y,miner.x]
+                                            miner.move(board)
+                                            grid[lastpos[0]][lastpos[1]] = 0
+                                            grid[miner.y][miner.x] = 1
+                                            updateDisplay(grid, GRID_SIZE,screen,board)
+                                    else:
+                                        break
+                    if [miner.y,miner.x] == prev_gold:
                         gameover = True
-                        print("treasure")
+                        print("Win")
+                        break
                     pygame.time.delay(250)
                 #--------------------------------------------------
 
@@ -282,7 +521,7 @@ while not done:
                     if placement_type == beacon:
                         b = Beacon([row,column])
                         b.find_gold(grid)
-                        beacons.append(b)
+                        board.beacons.append(b)
                     elif placement_type == gold:
                         if board.prev_gold:
                             grid[board.prev_gold[0]][board.prev_gold[1]] = 0
